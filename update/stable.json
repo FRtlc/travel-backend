@@ -1,7 +1,1 @@
-{
-    "version": "1.0.2",
-    "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.0.2-stable/YouZhiNan-Setup-1.0.2.exe",
-    "changelog": "v1.0.2 - 杂志风格UI + 省份主题切换 + 省份风景背景图",
-    "date": "2026-08-01",
-    "channel": "stable"
-}
+{"version":"1.0.3","url":"https://github.com/FRtlc/travel-backend/releases/download/v1.0.3-stable/YouZhiNan-Setup-1.0.3.exe","changelog":"v1.0.3 - 全新自动更新机制，以后更新无需重新安装","date":"2026-08-01","channel":"stable"}
