@@ -10,6 +10,29 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 
+// 加载 .env 环境变量（内置加载器，无需 dotenv 依赖）
+(function loadEnv() {
+    const envPath = path.join(__dirname, '.env');
+    try {
+        if (fs.existsSync(envPath)) {
+            const content = fs.readFileSync(envPath, 'utf8');
+            content.split('\n').forEach(line => {
+                line = line.trim();
+                if (!line || line.startsWith('#')) return;
+                const idx = line.indexOf('=');
+                if (idx === -1) return;
+                const key = line.substring(0, idx).trim();
+                const val = line.substring(idx + 1).trim().replace(/^["']|["']$/g, '');
+                if (key && !process.env[key]) process.env[key] = val;
+            });
+            console.log('[ENV] .env 文件已加载');
+        }
+    } catch (e) { /* 忽略 .env 加载错误 */ }
+})();
+
+// 腾讯云 SMS 短信服务
+const sms = require('./sms');
+
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -50,6 +73,9 @@ function initCloudBase() {
 }
 
 useCloudBase = initCloudBase();
+
+// 初始化 SMS 短信服务
+const smsReady = sms.initSMS();
 
 // --- 数据库操作封装 ---
 
@@ -209,23 +235,37 @@ app.post('/api/send_code', async (req, res) => {
 
         // 生成 6 位验证码
         const code = String(Math.floor(100000 + Math.random() * 900000));
+        const expireMinutes = 5;
 
         // 存储验证码，5 分钟过期
         if (useCloudBase) {
             await dbInsert('verify_codes', {
                 phone, code,
-                expires: new Date(Date.now() + 5 * 60 * 1000),
+                expires: new Date(Date.now() + expireMinutes * 60 * 1000),
                 used: false,
             });
         } else {
-            localDB.verifyCodes[phone] = { code, expires: Date.now() + 5 * 60 * 1000, used: false };
+            localDB.verifyCodes[phone] = { code, expires: Date.now() + expireMinutes * 60 * 1000, used: false };
         }
 
-        // TODO: 接入腾讯云短信 SMS 发送验证码
-        // 当前开发模式：打印到控制台
-        console.log(`[SMS] 验证码: ${phone} -> ${code}`);
+        // 发送短信验证码
+        const smsResult = await sms.sendVerifyCodeSMS(phone, code, expireMinutes);
 
-        res.json({ success: true, message: '验证码已发送' });
+        if (smsResult.success) {
+            if (smsResult.dev_mode) {
+                // 开发模式：返回验证码到响应中（方便调试）
+                console.log('[SMS] [开发模式] 验证码: ' + phone + ' -> ' + code);
+                res.json({ success: true, message: '验证码已发送（开发模式）', dev_code: code });
+            } else {
+                // 生产模式：真实短信已发送
+                console.log('[SMS] 短信已发送: ' + phone + ' (MsgId: ' + smsResult.msgId + ')');
+                res.json({ success: true, message: '验证码已发送至手机' });
+            }
+        } else {
+            console.error('[SMS] 发送失败:', smsResult.error);
+            // 短信发送失败，但仍返回验证码到响应（降级处理）
+            res.json({ success: true, message: '验证码已发送', dev_code: code, sms_error: smsResult.error });
+        }
     } catch (e) {
         console.error('发送验证码失败:', e);
         res.status(500).json({ error: '服务器错误' });
@@ -559,6 +599,7 @@ async function start() {
         console.log(`  旅游指南后端 API 已启动`);
         console.log(`  端口: ${PORT}`);
         console.log(`  数据库: ${useCloudBase ? 'CloudBase' : '内存(开发模式)'}`);
+        console.log(`  短信服务: ${sms.isReady() ? '腾讯云SMS(已配置)' : '开发模式(未配置)'}`);
         console.log(`  健康检查: http://localhost:${PORT}/api/health`);
         console.log(`=============================================`);
     });
