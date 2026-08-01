@@ -1,1 +1,8 @@
-{"version":"1.1.0","url":"https://github.com/FRtlc/travel-backend/releases/download/v1.1.0-stable/YouZhiNan-Setup-1.1.0.exe","changelog":"v1.1.0 - 账号数据绑定、更新提速、搜索改造、UI去纯色化、购票/商品/酒店/导游/导航五大功能开发","date":"2026-07-31","channel":"stable"}
+{
+    "version": "1.2.0",
+    "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.2.0-stable/YouZhiNan-Setup-1.2.0.exe",
+    "changelog": "修复登录界面+新用户教程+UI改版蓝绿色系",
+    "channel": "stable",
+    "size": 83635312,
+    "date": "2026-08-01T00:20:04.068Z"
+}
