@@ -1,7 +1,7 @@
 {
-  "version": "1.3.2",
-  "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.3.2-stable/YouZhiNan-Setup-1.3.2.exe",
-  "changelog": "v1.3.2 - 深色模式、图片懒加载、分页加载、数据导出导入、离线资源、搜索防抖、景点数据扩展、侧边栏对齐修复",
+  "version": "1.3.3",
+  "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.3.3-stable/YouZhiNan-Setup-1.3.3.exe",
+  "changelog": "v1.3.3 - 修复自动更新下载失败问题（GitHub重定向处理+electron-updater回退逻辑修复）",
   "date": "2026-08-02",
-  "size": 84582201
+  "size": 84582556
 }
