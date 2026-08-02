@@ -1,7 +1,7 @@
 {
-  "version": "1.3.0",
-  "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.3.0-stable/YouZhiNan-Setup-1.3.0.exe",
-  "changelog": "v1.3.0 - 设置页面、更新弹窗配色优化、侧边栏图标修复",
-  "date": "2026-08-01T01:25:30.269Z",
-  "mandatory": false
+  "version": "1.3.1",
+  "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.3.1-stable/YouZhiNan-Setup-1.3.1.exe",
+  "changelog": "飞翔感风格融合 — 加载动画改为风迹流动、Banner轻微浮动、空状态风迹扫线",
+  "date": "2026-08-02",
+  "size": 83664266
 }
