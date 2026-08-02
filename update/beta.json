@@ -1,7 +1,7 @@
 {
-  "version": "1.3.0",
-  "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.3.0-stable/YouZhiNan-Setup-1.3.0.exe",
-  "changelog": "v1.3.0 - 设置页面、更新弹窗配色优化、侧边栏图标修复",
-  "date": "2026-08-01T01:25:31.555Z",
+  "version": "1.3.6",
+  "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.3.6-beta/YouZhiNan-Setup-1.3.6.exe",
+  "changelog": "v1.3.6 Beta - 订单/记录删除、商家电话、规划城市选择改造、景点首字母索引、返回键左上角、反馈功能、搜索历史",
+  "date": "2026-08-02T08:58:33.555Z",
   "mandatory": false
 }
