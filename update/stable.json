@@ -1,7 +1,7 @@
 {
-  "version": "1.3.3",
-  "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.3.3-stable/YouZhiNan-Setup-1.3.3.exe",
-  "changelog": "v1.3.3 - 修复自动更新下载失败问题（GitHub重定向处理+electron-updater回退逻辑修复）",
+  "version": "1.3.4",
+  "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.3.4-stable/YouZhiNan-Setup-1.3.4.exe",
+  "changelog": "v1.3.4 - 584个景点门票价格修正为真实价格 + 酒店价格改为按城市物价水平动态定价",
   "date": "2026-08-02",
-  "size": 84582556
+  "size": 84584599
 }
