@@ -1,7 +1,7 @@
 {
-  "version": "1.4.1",
-  "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.4.1-beta/YouZhiNan-Setup-1.4.1.exe",
-  "changelog": "v1.4.1 beta: CORS修复+定位容错+初始化防错+IP超时+geolocation优化",
+  "version": "1.4.2",
+  "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.4.2-beta/YouZhiNan-Setup-1.4.2.exe",
+  "changelog": "v1.4.2 beta: IP定位多源竞速+超时延长到20秒",
   "channel": "beta",
   "prerelease": true
 }
