@@ -1,7 +1,7 @@
 {
-  "version": "1.3.7",
-  "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.3.7-beta/YouZhiNan-Setup-1.3.7.exe",
-  "changelog": "v1.3.7 Beta - 修复浏览景点点击显示加载详情失败的Bug",
-  "date": "2026-08-02T09:31:07.143Z",
+  "version": "1.3.8",
+  "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.3.8-beta/YouZhiNan-Setup-1.3.8.exe",
+  "changelog": "v1.3.8 Beta - 附近页面改造(酒店/美食/景点)、首页各省必玩推荐、出行导航工具+AI行程助手",
+  "date": "2026-08-03T04:02:26.398Z",
   "mandatory": false
 }
