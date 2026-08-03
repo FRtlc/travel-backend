@@ -1,7 +1,7 @@
 {
-  "version": "1.5.1",
-  "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.5.1-beta/YouZhiNan-Setup-1.5.1.exe",
-  "changelog": "v1.5.1 beta: 584个景点全部补真实坐标+附近页按真实距离排序+附近卡片加图片+首页推荐城市匹配修复+定位城市名标准化",
+  "version": "1.5.2",
+  "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.5.2-beta/YouZhiNan-Setup-1.5.2.exe",
+  "changelog": "v1.5.2 beta: 34省+333地级行政区全量数据+拼音首字母全面修复(pypinyin生成)+路线规划城市列表完整化",
   "channel": "beta",
   "prerelease": true
 }
