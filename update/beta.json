@@ -1,7 +1,7 @@
 {
-  "version": "1.3.9",
-  "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.3.9-beta/YouZhiNan-Setup-1.3.9.exe",
-  "changelog": "v1.3.9 Beta - 修复定位获取失败(Electron权限处理器+IP定位兜底)",
-  "date": "2026-08-03T04:26:09.389Z",
-  "mandatory": false
+  "version": "1.4.0",
+  "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.4.0-beta/YouZhiNan-Setup-1.4.0.exe",
+  "changelog": "v1.4.0 beta: 定位修复+成就修复+智能填充+图片修复+附近酒店美食修复",
+  "channel": "beta",
+  "prerelease": true
 }
