@@ -1,7 +1,1 @@
-{
-  "version": "1.5.2",
-  "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.5.2-beta/YouZhiNan-Setup-1.5.2.exe",
-  "changelog": "v1.5.2 beta: 34省+333地级行政区全量数据+拼音首字母全面修复(pypinyin生成)+路线规划城市列表完整化",
-  "channel": "beta",
-  "prerelease": true
-}
+{"version":"1.5.2","url":"https://github.com/FRtlc/travel-backend/releases/download/v1.5.2-beta/YouZhiNan-Setup-1.5.2.exe","changelog":"v1.5.2 beta: 34省+333地级行政区全量+路线规划拼音排序修复+china-regions.js完整行政区划+重庆拼音首字母修正(C)+417汉字拼音映射表","channel":"beta","prerelease":true}
