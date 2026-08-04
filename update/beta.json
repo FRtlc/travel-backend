@@ -1,1 +1,8 @@
-{"version":"1.5.3","url":"https://github.com/FRtlc/travel-backend/releases/download/v1.5.3-beta/YouZhiNan-Setup-1.5.3.exe","changelog":"v1.5.3 beta: 重庆拼音首字母修正(Z->C)+行政区划数据核对+417汉字拼音映射表验证","channel":"beta","prerelease":true}
+{
+  "version": "1.5.4",
+  "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.5.4-beta/YouZhiNan-Setup-1.5.4.exe",
+  "apkUrl": "https://github.com/FRtlc/travel-backend/releases/download/v1.5.4-beta/YouZhiNan-1.5.4-android.apk",
+  "changelog": "v1.5.4 beta: 附近页同省优先筛选+响沙湾图片修复+移动端白屏修复+关于隐私页面+移动端更新检查+图片懒加载优化+网络状态监听+版本号修复",
+  "channel": "beta",
+  "prerelease": true
+}
