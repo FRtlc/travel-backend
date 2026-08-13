@@ -15,17 +15,19 @@ cloudbase-backend/
 
 ## 前端改动
 
-前端只需改一行代码，将 `旅游.html` 中的：
+前端已支持通过 `window.__API_BASE__` 注入后端地址（v1.5.5 起）：
+
+- **桌面端 (Electron)**: `main.js` 中 `did-finish-load` 注入 `window.__API_BASE__`
+- **移动端 (Capacitor)**: `www/index.html` 中设置 `window.__API_BASE__`
+- **未注入时**：桌面端默认本地 `http://localhost:5000/api`，移动端自动离线独立运行
+
+部署后改为你的 CloudBase 云托管地址：
 
 ```javascript
-const API_BASE = 'http://47.250.211.42:5000/api';
+window.__API_BASE__ = 'https://your-service.tcloudbase.com/api';
 ```
 
-改为你的 CloudBase 云托管地址：
-
-```javascript
-const API_BASE = 'https://your-service.tcloudbase.com/api';
-```
+> 注意：v1.5.5 起前端不再存放任何 API Key，AI 请求统一走后端代理。
 
 ---
 
@@ -130,6 +132,7 @@ docker run -d -p 5000:5000 -e TCB_ENV_ID=your-env-id travel-backend
 | `/api/guide/search` | POST | 是 | 预约导游 |
 | `/api/ai/generate_copy` | POST | 是 | AI 生成文案 |
 | `/api/ai/ask` | POST | 可选 | AI 问答 (SSE 流式) |
+| `/api/ai/plan` | POST | 可选 | 路线规划 AI (JSON) |
 | `/api/ai/history` | GET | 是 | AI 对话历史 |
 
 ---
@@ -166,6 +169,6 @@ CloudBase 数据库需要创建以下集合（首次请求时自动创建）：
 
 2. **照片存储**: 打卡照片目前以 base64 存储。生产环境建议接入 CloudBase 云存储，将照片上传后返回 URL。
 
-3. **AI 问答**: 当前使用模板回复。如需接入真实大模型，在 `server.js` 中配置 `AI_API_KEY` 和 `AI_API_URL`。
+3. **AI 问答**: 默认使用本地模板回复（离线可用）。设置环境变量 `DEEPSEEK_API_KEY` 后自动启用真实 DeepSeek AI（模型默认 `deepseek-chat`，可用 `DEEPSEEK_MODEL` 覆盖），未配置或调用失败时自动回退模板，不影响其他功能。
 
 4. **自动伸缩**: CloudBase 云托管支持自动伸缩，请求量小时缩容到 0 实例（不产生费用），有请求时自动启动。

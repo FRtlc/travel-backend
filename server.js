@@ -9,6 +9,7 @@ const cors = require('cors');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
 
 // 加载 .env 环境变量（内置加载器，无需 dotenv 依赖）
 (function loadEnv() {
@@ -507,6 +508,83 @@ app.get('/api/checkins', optionalAuth, async (req, res) => {
     }
 });
 
+// ============================================================
+// DeepSeek AI 集成（可选）：设置环境变量 DEEPSEEK_API_KEY 后启用真实 AI
+// 未设置时自动回退到本地模板回复，不影响其他功能
+// ============================================================
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
+const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+
+function aiEnabled() {
+    return !!DEEPSEEK_API_KEY;
+}
+
+/**
+ * 调用 DeepSeek Chat API（使用 Node 内置 https，无需额外依赖）
+ * @param {Array} messages - OpenAI 格式的 messages
+ * @param {number} maxTokens
+ * @returns {Promise<string>} 回复文本
+ */
+function callDeepSeek(messages, maxTokens) {
+    return new Promise((resolve, reject) => {
+        const payload = JSON.stringify({
+            model: DEEPSEEK_MODEL,
+            messages: messages,
+            temperature: 0.7,
+            max_tokens: maxTokens || 1500
+        });
+        const req = https.request({
+            hostname: 'api.deepseek.com',
+            path: '/v1/chat/completions',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + DEEPSEEK_API_KEY,
+                'Content-Length': Buffer.byteLength(payload)
+            },
+            timeout: 30000
+        }, (res) => {
+            let body = '';
+            res.on('data', chunk => { body += chunk; });
+            res.on('end', () => {
+                try {
+                    const data = JSON.parse(body);
+                    if (data.choices && data.choices[0] && data.choices[0].message) {
+                        resolve(data.choices[0].message.content || '');
+                    } else if (data.error) {
+                        reject(new Error('DeepSeek 错误: ' + (data.error.message || JSON.stringify(data.error))));
+                    } else {
+                        reject(new Error('DeepSeek 响应格式异常'));
+                    }
+                } catch (e) {
+                    reject(new Error('DeepSeek 响应解析失败: ' + e.message));
+                }
+            });
+        });
+        req.on('timeout', () => { req.destroy(new Error('DeepSeek 请求超时')); });
+        req.on('error', reject);
+        req.write(payload);
+        req.end();
+    });
+}
+
+/**
+ * 生成 AI 问答回复：有 DEEPSEEK_API_KEY 时调用真实 DeepSeek，否则用本地模板兜底
+ */
+async function generateAIReplyAsync(question) {
+    if (!aiEnabled()) return generateAIReply(question);
+    try {
+        const reply = await callDeepSeek([
+            { role: 'system', content: '你是"游指南"旅行应用的智能助手，用简洁、实用、友好的中文回答用户的旅行问题，包括目的地推荐、行程攻略、美食、预算、最佳旅行时间等。回答控制在300字以内，可使用要点列表。' },
+            { role: 'user', content: question }
+        ]);
+        return reply || generateAIReply(question);
+    } catch (e) {
+        console.error('DeepSeek 调用失败，回退模板:', e.message);
+        return generateAIReply(question);
+    }
+}
+
 // --- AI 问答（SSE 流式） ---
 app.post('/api/ai/ask', optionalAuth, async (req, res) => {
     try {
@@ -523,8 +601,8 @@ app.post('/api/ai/ask', optionalAuth, async (req, res) => {
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
 
-        // 生成回复
-        const reply = generateAIReply(question);
+        // 生成回复（配置 DEEPSEEK_API_KEY 时为真实 AI，否则模板兜底）
+        const reply = await generateAIReplyAsync(question);
         const words = reply.split('');
 
         for (let i = 0; i < words.length; i++) {
@@ -548,6 +626,37 @@ app.post('/api/ai/ask', optionalAuth, async (req, res) => {
         } else {
             res.end();
         }
+    }
+});
+
+// --- 路线规划 AI（JSON 非流式，供前端 callAI 使用）---
+app.post('/api/ai/plan', optionalAuth, async (req, res) => {
+    try {
+        const { prompt, context } = req.body;
+        if (!prompt) return res.status(400).json({ error: '缺少 prompt' });
+
+        let reply = '';
+        if (aiEnabled()) {
+            try {
+                const ctx = context || {};
+                const spotsInfo = (ctx.spots || []).map(s => `${s.name}(${s.city || ''},${s.category || '景点'},¥${s.price || 0})`).join('、');
+                const sysMsg = '你是专业的旅游行程规划助手。用户已选景点: ' + spotsInfo +
+                    '。旅行天数: ' + (ctx.days || 1) + '天，节奏: ' + (ctx.pace || '适中') +
+                    '，预算: ' + (ctx.budget || '中等') +
+                    '。请给出优化建议，包括行程顺序、时间分配、餐饮和交通建议，300字以内，用要点列出。';
+                reply = await callDeepSeek([
+                    { role: 'system', content: sysMsg },
+                    { role: 'user', content: prompt }
+                ], 1500);
+            } catch (e) {
+                console.error('DeepSeek 规划失败，回退模板:', e.message);
+            }
+        }
+        // 未配置 DeepSeek 或调用失败时返回空 reply，由前端本地模板兜底
+        res.json({ reply: reply || '' });
+    } catch (e) {
+        console.error('AI 规划失败:', e);
+        res.status(500).json({ error: '服务器错误' });
     }
 });
 
@@ -600,6 +709,7 @@ async function start() {
         console.log(`  端口: ${PORT}`);
         console.log(`  数据库: ${useCloudBase ? 'CloudBase' : '内存(开发模式)'}`);
         console.log(`  短信服务: ${sms.isReady() ? '腾讯云SMS(已配置)' : '开发模式(未配置)'}`);
+        console.log(`  AI 服务: ${aiEnabled() ? 'DeepSeek(已配置)' : '模板回复(未配置 DEEPSEEK_API_KEY)'}`);
         console.log(`  健康检查: http://localhost:${PORT}/api/health`);
         console.log(`=============================================`);
     });
