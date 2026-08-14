@@ -35,8 +35,76 @@ const https = require('https');
 const sms = require('./sms');
 
 const app = express();
-app.use(cors());
+
+// --- CORS 白名单（仅允许本应用的来源访问） ---
+const ALLOWED_ORIGINS = [
+    'capacitor://localhost',      // Android App (Capacitor)
+    'ionic://localhost',          // iOS App (Capacitor)
+    'https://localhost',          // Capacitor 新版本
+    null,                         // Electron file:// 协议（Origin: null）
+];
+// 额外白名单：WEB_ORIGIN 环境变量（逗号分隔，部署 Web 版时配置）
+if (process.env.WEB_ORIGIN) {
+    process.env.WEB_ORIGIN.split(',').map(o => o.trim()).filter(Boolean).forEach(o => ALLOWED_ORIGINS.push(o));
+}
+app.use(cors({
+    origin(origin, callback) {
+        // 无 Origin 头（同源请求 / 服务器健康检查 / curl）直接放行
+        if (!origin) return callback(null, true);
+        // localhost / 127.0.0.1 任意端口放行（本地开发）
+        if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return callback(null, true);
+        if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+        console.warn('[CORS] 拒绝来源:', origin);
+        return callback(null, false);
+    },
+    credentials: false,
+}));
 app.use(express.json({ limit: '10mb' }));
+
+// --- 接口频率限制（防刷） ---
+const rateBuckets = new Map(); // key -> { count, resetAt }
+function rateLimit(key, limit, windowMs) {
+    const now = Date.now();
+    let b = rateBuckets.get(key);
+    if (!b || now > b.resetAt) {
+        b = { count: 0, resetAt: now + windowMs };
+        rateBuckets.set(key, b);
+    }
+    b.count++;
+    // 顺带清理过期桶，防止内存膨胀
+    if (rateBuckets.size > 10000) {
+        for (const [k, v] of rateBuckets) if (now > v.resetAt) rateBuckets.delete(k);
+    }
+    return b.count <= limit;
+}
+function clientIP(req) {
+    const xf = req.headers['x-forwarded-for'];
+    if (xf) return String(xf).split(',')[0].trim();
+    return req.ip || req.socket.remoteAddress || 'unknown';
+}
+// 全局限流：100 次/分钟/IP
+app.use((req, res, next) => {
+    if (!rateLimit('global:' + clientIP(req), 100, 60 * 1000)) {
+        return res.status(429).json({ error: '请求过于频繁，请稍后再试' });
+    }
+    next();
+});
+// 登录注册限流：10 次/分钟/IP
+const authRateLimit = (req, res, next) => {
+    if (!rateLimit('auth:' + clientIP(req), 10, 60 * 1000)) {
+        return res.status(429).json({ error: '尝试次数过多，请 1 分钟后再试' });
+    }
+    next();
+};
+// 短信限流：5 次/小时/IP + 5 次/小时/手机号
+const smsRateLimit = (req, res, next) => {
+    const phone = req.body && req.body.phone;
+    if (!rateLimit('sms:ip:' + clientIP(req), 5, 60 * 60 * 1000) ||
+        (phone && !rateLimit('sms:phone:' + phone, 5, 60 * 60 * 1000))) {
+        return res.status(429).json({ error: '验证码发送过于频繁，请 1 小时后再试' });
+    }
+    next();
+};
 
 // ============================================================
 // 数据库适配层：CloudBase Database (生产) / 内存 (本地开发)
@@ -137,6 +205,16 @@ async function dbUpdate(collection, id, update) {
     }
 }
 
+async function dbDelete(collection, id) {
+    if (useCloudBase) {
+        await db.collection(collection).doc(id).remove();
+    } else {
+        const list = localDB[collection] || [];
+        const idx = list.findIndex(i => String(i._id || i.id) === String(id));
+        if (idx >= 0) list.splice(idx, 1);
+    }
+}
+
 // --- 景点数据初始化 ---
 
 async function initSpotsData() {
@@ -160,6 +238,53 @@ async function initSpotsData() {
 }
 
 // ============================================================
+// 安全：密码哈希（scrypt 加盐）+ 登录令牌
+// ============================================================
+
+const SCRYPT_N = 16384, SCRYPT_KEYLEN = 64;
+
+// 加盐 scrypt 哈希，格式: scrypt$<盐hex>$<哈希hex>
+function hashPassword(password) {
+    const salt = crypto.randomBytes(16);
+    const hash = crypto.scryptSync(String(password), salt, SCRYPT_KEYLEN, { N: SCRYPT_N });
+    return 'scrypt$' + salt.toString('hex') + '$' + hash.toString('hex');
+}
+
+// 校验密码；兼容历史 MD5 记录（校验通过后应调用 upgradeLegacyPassword 升级）
+function verifyPassword(password, stored) {
+    if (typeof stored !== 'string' || !stored) return false;
+    if (stored.startsWith('scrypt$')) {
+        const [, saltHex, hashHex] = stored.split('$');
+        try {
+            const hash = crypto.scryptSync(String(password), Buffer.from(saltHex, 'hex'), SCRYPT_KEYLEN, { N: SCRYPT_N });
+            // 定长比较防时序攻击
+            return hash.length === Buffer.from(hashHex, 'hex').length &&
+                crypto.timingSafeEqual(hash, Buffer.from(hashHex, 'hex'));
+        } catch (e) { return false; }
+    }
+    // 历史 MD5（旧数据迁移用）
+    return crypto.createHash('md5').update(String(password)).digest('hex') === stored;
+}
+function isLegacyHash(stored) { return typeof stored === 'string' && stored !== '' && !stored.startsWith('scrypt$'); }
+
+// --- 登录令牌：服务端签发的随机 token（7 天有效） ---
+const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const tokenStore = new Map(); // token -> { userId, expires }
+function issueToken(userId) {
+    const token = crypto.randomBytes(32).toString('hex');
+    tokenStore.set(token, { userId, expires: Date.now() + TOKEN_TTL_MS });
+    return token;
+}
+function verifyToken(token) {
+    if (!token) return null;
+    const t = tokenStore.get(token);
+    if (!t) return null;
+    if (Date.now() > t.expires) { tokenStore.delete(token); return null; }
+    return t.userId;
+}
+function revokeToken(token) { if (token) tokenStore.delete(token); }
+
+// ============================================================
 // 中间件
 // ============================================================
 
@@ -168,14 +293,24 @@ function authMiddleware(req, res, next) {
     if (!auth || !auth.startsWith('Bearer ')) {
         return res.status(401).json({ error: '请先登录' });
     }
-    req.userId = auth.replace('Bearer ', '');
+    const token = auth.replace('Bearer ', '');
+    const userId = verifyToken(token);
+    if (!userId) {
+        return res.status(401).json({ error: '登录已过期，请重新登录' });
+    }
+    req.userId = userId;
+    req.token = token;
     next();
 }
 
 function optionalAuth(req, res, next) {
     const auth = req.headers.authorization;
     if (auth && auth.startsWith('Bearer ')) {
-        req.userId = auth.replace('Bearer ', '');
+        const userId = verifyToken(auth.replace('Bearer ', ''));
+        if (userId) {
+            req.userId = userId;
+            req.token = auth.replace('Bearer ', '');
+        }
     }
     next();
 }
@@ -190,7 +325,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // --- 用户注册 ---
-app.post('/api/register', async (req, res) => {
+app.post('/api/register', authRateLimit, async (req, res) => {
     try {
         const { username, password } = req.body;
         if (!username || username.length < 3) return res.status(400).json({ error: '用户名至少3个字符' });
@@ -199,9 +334,9 @@ app.post('/api/register', async (req, res) => {
         const existing = await dbGet('users', { username });
         if (existing.length > 0) return res.status(409).json({ error: '用户名已存在' });
 
-        const hashedPwd = crypto.createHash('md5').update(password).digest('hex');
-        const user = await dbInsert('users', { username, password: hashedPwd });
-        res.json({ success: true, user_id: user._id, username: user.username });
+        const user = await dbInsert('users', { username, password: hashPassword(password) });
+        const token = issueToken(user._id);
+        res.json({ success: true, user_id: user._id, username: user.username, token });
     } catch (e) {
         console.error('注册失败:', e);
         res.status(500).json({ error: '服务器错误' });
@@ -209,17 +344,24 @@ app.post('/api/register', async (req, res) => {
 });
 
 // --- 用户登录 ---
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', authRateLimit, async (req, res) => {
     try {
         const { username, password } = req.body;
         if (!username || !password) return res.status(400).json({ error: '请输入用户名和密码' });
 
-        const hashedPwd = crypto.createHash('md5').update(password).digest('hex');
         const users = await dbGet('users', { username });
-        const user = users.find(u => u.password === hashedPwd);
+        const user = users.find(u => verifyPassword(password, u.password));
 
         if (!user) return res.status(401).json({ error: '用户名或密码错误' });
-        res.json({ success: true, user_id: user._id, username: user.username });
+
+        // 旧 MD5 密码自动升级为 scrypt
+        if (isLegacyHash(user.password)) {
+            await dbUpdate('users', user._id, { password: hashPassword(password) });
+            console.log('[AUTH] 已自动升级旧密码哈希为 scrypt:', username);
+        }
+
+        const token = issueToken(user._id);
+        res.json({ success: true, user_id: user._id, username: user.username, token });
     } catch (e) {
         console.error('登录失败:', e);
         res.status(500).json({ error: '服务器错误' });
@@ -227,7 +369,7 @@ app.post('/api/login', async (req, res) => {
 });
 
 // --- 发送手机验证码 ---
-app.post('/api/send_code', async (req, res) => {
+app.post('/api/send_code', smsRateLimit, async (req, res) => {
     try {
         const { phone } = req.body;
         if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
@@ -254,9 +396,9 @@ app.post('/api/send_code', async (req, res) => {
 
         if (smsResult.success) {
             if (smsResult.dev_mode) {
-                // 开发模式：返回验证码到响应中（方便调试）
+                // 开发模式：验证码只打到控制台，不返回给客户端
                 console.log('[SMS] [开发模式] 验证码: ' + phone + ' -> ' + code);
-                res.json({ success: true, message: '验证码已发送（开发模式）', dev_code: code });
+                res.json({ success: true, message: '验证码已发送（开发模式，见服务端控制台）' });
             } else {
                 // 生产模式：真实短信已发送
                 console.log('[SMS] 短信已发送: ' + phone + ' (MsgId: ' + smsResult.msgId + ')');
@@ -264,8 +406,8 @@ app.post('/api/send_code', async (req, res) => {
             }
         } else {
             console.error('[SMS] 发送失败:', smsResult.error);
-            // 短信发送失败，但仍返回验证码到响应（降级处理）
-            res.json({ success: true, message: '验证码已发送', dev_code: code, sms_error: smsResult.error });
+            // 短信发送失败：不再把验证码返回给客户端（防绕过短信直接拿码）
+            res.status(502).json({ error: '短信服务暂时不可用，请稍后再试' });
         }
     } catch (e) {
         console.error('发送验证码失败:', e);
@@ -274,7 +416,7 @@ app.post('/api/send_code', async (req, res) => {
 });
 
 // --- 手机号验证码登录 ---
-app.post('/api/phone_login', async (req, res) => {
+app.post('/api/phone_login', authRateLimit, async (req, res) => {
     try {
         const { phone, code } = req.body;
         if (!phone || !code) return res.status(400).json({ error: '请输入手机号和验证码' });
@@ -311,7 +453,8 @@ app.post('/api/phone_login', async (req, res) => {
             user = users[0];
         }
 
-        res.json({ success: true, user_id: user._id, username: user.username });
+        const token = issueToken(user._id);
+        res.json({ success: true, user_id: user._id, username: user.username, token });
     } catch (e) {
         console.error('手机登录失败:', e);
         res.status(500).json({ error: '服务器错误' });
@@ -457,12 +600,19 @@ app.post('/api/ai/generate_copy', authMiddleware, async (req, res) => {
 // --- 提交打卡 ---
 app.post('/api/checkins', authMiddleware, async (req, res) => {
     try {
-        const { spot_name, copy, mood, template, is_public, photo } = req.body;
+        const { spot_name, copy, mood, template, is_public, photo, photo_consent } = req.body;
+
+        // 照片授权：携带照片时必须明确勾选授权，否则拒绝（个人信息保护要求）
+        if (photo && photo_consent !== true) {
+            return res.status(400).json({ error: '上传照片前需勾选照片使用授权' });
+        }
+
         const checkin = await dbInsert('checkins', {
             user_id: req.userId,
             spot_name, copy, mood, template,
             is_public: is_public !== false,
             photo: photo || '',
+            photo_consent: photo ? true : false,
             likes: 0,
         });
 
@@ -506,6 +656,30 @@ app.get('/api/checkins', optionalAuth, async (req, res) => {
         console.error('获取打卡列表失败:', e);
         res.status(500).json({ error: '服务器错误' });
     }
+});
+
+// --- 删除自己的打卡（含照片，用户数据被遗忘权） ---
+app.delete('/api/checkins/:id', authMiddleware, async (req, res) => {
+    try {
+        const id = req.params.id;
+        const checkin = await dbGetById('checkins', id);
+        if (!checkin) return res.status(404).json({ error: '打卡不存在' });
+        // 只允许删除自己的打卡
+        if (String(checkin.user_id) !== String(req.userId)) {
+            return res.status(403).json({ error: '只能删除自己的打卡' });
+        }
+        await dbDelete('checkins', id);
+        res.json({ success: true });
+    } catch (e) {
+        console.error('删除打卡失败:', e);
+        res.status(500).json({ error: '服务器错误' });
+    }
+});
+
+// --- 退出登录（吊销令牌） ---
+app.post('/api/logout', authMiddleware, (req, res) => {
+    revokeToken(req.token);
+    res.json({ success: true });
 });
 
 // ============================================================
@@ -703,6 +877,17 @@ const PORT = process.env.PORT || 5000;
 
 async function start() {
     await initSpotsData();
+    // HTTPS 防护：生产环境禁止裸 HTTP 直接对外
+    // CloudBase 云托管 / Render 等平台由平台层终结 TLS，应用内部走 HTTP 属正常情况（以 TCB_ENV_ID / RENDER 判定）
+    const isProd = process.env.NODE_ENV === 'production';
+    const behindTLSPlatform = !!(process.env.TCB_ENV_ID || process.env.RENDER || process.env.FORCE_INSECURE);
+    if (isProd && !behindTLSPlatform) {
+        console.error('[安全] 生产环境(NODE_ENV=production)拒绝以裸 HTTP 启动：账号密码将明文传输。');
+        console.error('[安全] 请部署到自带 HTTPS 的平台（CloudBase 云托管 / Render 等），');
+        console.error('[安全] 或设置 FORCE_INSECURE=1 明确确认风险后重试。');
+        process.exit(1);
+    }
+
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`=============================================`);
         console.log(`  旅游指南后端 API 已启动`);
@@ -710,6 +895,7 @@ async function start() {
         console.log(`  数据库: ${useCloudBase ? 'CloudBase' : '内存(开发模式)'}`);
         console.log(`  短信服务: ${sms.isReady() ? '腾讯云SMS(已配置)' : '开发模式(未配置)'}`);
         console.log(`  AI 服务: ${aiEnabled() ? 'DeepSeek(已配置)' : '模板回复(未配置 DEEPSEEK_API_KEY)'}`);
+        console.log(`  安全: 密码scrypt加密 / 令牌鉴权 / 限流开启 / CORS白名单`);
         console.log(`  健康检查: http://localhost:${PORT}/api/health`);
         console.log(`=============================================`);
     });

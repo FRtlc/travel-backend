@@ -112,7 +112,7 @@ docker run -d -p 5000:5000 -e TCB_ENV_ID=your-env-id travel-backend
 
 ---
 
-## API 端点列表 (共 16 个)
+## API 端点列表 (共 18 个)
 
 | 端点 | 方法 | 认证 | 功能 |
 |------|------|------|------|
@@ -121,11 +121,13 @@ docker run -d -p 5000:5000 -e TCB_ENV_ID=your-env-id travel-backend
 | `/api/login` | POST | 否 | 账号密码登录 |
 | `/api/send_code` | POST | 否 | 发送手机验证码 |
 | `/api/phone_login` | POST | 否 | 手机号验证码登录 |
+| `/api/logout` | POST | 是 | 退出登录（吊销令牌） |
 | `/api/spots` | GET | 否 | 获取全部景点 |
 | `/api/spots/:id` | GET | 否 | 获取景点详情 |
 | `/api/provinces` | GET | 否 | 获取省份列表 |
 | `/api/checkins` | GET | 可选 | 获取打卡列表 |
-| `/api/checkins` | POST | 是 | 提交打卡 |
+| `/api/checkins` | POST | 是 | 提交打卡（带照片需 photo_consent: true） |
+| `/api/checkins/:id` | DELETE | 是 | 删除自己的打卡（含照片） |
 | `/api/ticket/order` | POST | 是 | 购票下单 |
 | `/api/merch/list` | POST | 是 | 周边商品列表 |
 | `/api/hotel/search` | POST | 是 | 搜索附近酒店 |
@@ -136,6 +138,17 @@ docker run -d -p 5000:5000 -e TCB_ENV_ID=your-env-id travel-backend
 | `/api/ai/history` | GET | 是 | AI 对话历史 |
 
 ---
+
+## 安全机制（v1.5.6 起内置）
+
+| 机制 | 说明 |
+|------|------|
+| 密码存储 | scrypt 加盐哈希（16384 轮），历史 MD5 记录登录时自动升级，比较使用 timingSafeEqual 防时序攻击 |
+| 登录凭证 | 服务端签发 256 位随机 token（7 天有效），不再以 userId 作为凭证，无法伪造他人身份 |
+| CORS 白名单 | 仅允许 App 来源（capacitor://localhost、localhost、Electron），额外来源用 `WEB_ORIGIN` 环境变量配置 |
+| 接口限流 | 全局 100 次/分钟/IP；登录注册 10 次/分钟/IP；短信验证码 5 次/小时/IP 和手机号 |
+| 照片隐私 | 打卡带照片必须传 `photo_consent: true`；用户可随时 DELETE 自己的打卡及照片 |
+| HTTPS 强制 | `NODE_ENV=production` 且非 TLS 平台时拒绝启动；CloudBase 云托管 / Render 等平台自带 HTTPS，直接部署即满足 |
 
 ## 数据库集合
 
