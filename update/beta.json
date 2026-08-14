@@ -1,7 +1,8 @@
 {
   "version": "1.5.5",
-  "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.5.5-beta/YouZhiNan-Setup-1.5.5.exe",
-  "apkUrl": "https://github.com/FRtlc/travel-backend/releases/download/v1.5.5-beta/YouZhiNan-1.5.5-android.apk",
+  "url": "https://gh-proxy.com/https://github.com/FRtlc/travel-backend/releases/download/v1.5.5-beta/YouZhiNan-Setup-1.5.5.exe",
+  "apkUrl": "https://gh-proxy.com/https://github.com/FRtlc/travel-backend/releases/download/v1.5.5-beta/YouZhiNan-1.5.5-android.apk",
+  "mirrorUrl": "https://ghproxy.net/https://github.com/FRtlc/travel-backend/releases/download/v1.5.5-beta/YouZhiNan-Setup-1.5.5.exe",
   "changelog": "v1.5.5 beta: 移除前端明文AI密钥+AI请求统一走后端+附近页酒店美食数据固定+隐私政策/法律声明/联系我们上线+拼音排序缓存+导出版本号修复+更新弹窗每天一次+图片兜底增强",
   "channel": "beta",
   "prerelease": true
