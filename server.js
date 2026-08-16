@@ -117,6 +117,7 @@ let localDB = {           // 本地开发用内存数据库
     checkins: [],
     orders: [],
     aiHistory: [],
+    creditTransactions: [],
     verifyCodes: {},      // { phone: { code, expires } }
     spotsData: [],
     initialized: false,
@@ -285,6 +286,86 @@ function verifyToken(token) {
 function revokeToken(token) { if (token) tokenStore.delete(token); }
 
 // ============================================================
+// 积分系统：AI 问答消耗积分，打卡/成就获取积分，会员免扣
+// ============================================================
+
+const CREDIT_CONFIG = {
+    INITIAL: 50,          // 新用户初始积分
+    AI_ASK_COST: 5,       // AI 问答消耗
+    AI_PLAN_COST: 10,     // AI 路线规划消耗
+    CHECKIN_REWARD: 10,   // 每次打卡奖励
+    ACHIEVEMENT_REWARDS: { // 成就奖励（按 achievementData id）
+        1: 20, 2: 50, 3: 100, 4: 50, 5: 50, 6: 50, 7: 100, 8: 30, 9: 30
+    },
+};
+
+// 获取用户积分（不存在则返回 0）
+async function getUserCredits(userId) {
+    const users = await dbGet('users', { _id: userId });
+    if (users.length === 0) return 0;
+    return users[0].credits || 0;
+}
+
+// 检查是否会员
+async function isMember(userId) {
+    const users = await dbGet('users', { _id: userId });
+    return users.length > 0 && users[0].is_member === true;
+}
+
+// 增加积分并记录流水
+async function addCredits(userId, amount, reason) {
+    const users = await dbGet('users', { _id: userId });
+    if (users.length === 0) return;
+    const user = users[0];
+    const newBalance = (user.credits || 0) + amount;
+    await dbUpdate('users', user._id, { credits: newBalance });
+    await dbInsert('credit_transactions', {
+        user_id: userId, amount: amount, balance: newBalance,
+        reason: reason, type: 'earn',
+    });
+    return newBalance;
+}
+
+// 扣减积分（不足返回 false）
+async function deductCredits(userId, amount, reason) {
+    if (await isMember(userId)) return true; // 会员不扣
+    const users = await dbGet('users', { _id: userId });
+    if (users.length === 0) return false;
+    const user = users[0];
+    if ((user.credits || 0) < amount) return false;
+    const newBalance = (user.credits || 0) - amount;
+    await dbUpdate('users', user._id, { credits: newBalance });
+    await dbInsert('credit_transactions', {
+        user_id: userId, amount: -amount, balance: newBalance,
+        reason: reason, type: 'spend',
+    });
+    return true;
+}
+
+// 检查并领取成就奖励（防重复领取）
+async function claimAchievementReward(userId, achievementId) {
+    const users = await dbGet('users', { _id: userId });
+    if (users.length === 0) return { success: false, error: '用户不存在' };
+    const user = users[0];
+    const claimed = user.claimed_achievements || [];
+    if (claimed.includes(achievementId)) {
+        return { success: false, error: '该成就奖励已领取' };
+    }
+    const reward = CREDIT_CONFIG.ACHIEVEMENT_REWARDS[achievementId] || 0;
+    if (reward === 0) return { success: false, error: '无效的成就' };
+    const newBalance = (user.credits || 0) + reward;
+    await dbUpdate('users', user._id, {
+        credits: newBalance,
+        claimed_achievements: [...claimed, achievementId],
+    });
+    await dbInsert('credit_transactions', {
+        user_id: userId, amount: reward, balance: newBalance,
+        reason: '成就奖励 #' + achievementId, type: 'earn',
+    });
+    return { success: true, credits: newBalance, reward: reward };
+}
+
+// ============================================================
 // 中间件
 // ============================================================
 
@@ -334,9 +415,9 @@ app.post('/api/register', authRateLimit, async (req, res) => {
         const existing = await dbGet('users', { username });
         if (existing.length > 0) return res.status(409).json({ error: '用户名已存在' });
 
-        const user = await dbInsert('users', { username, password: hashPassword(password) });
+        const user = await dbInsert('users', { username, password: hashPassword(password), credits: CREDIT_CONFIG.INITIAL, claimed_achievements: [] });
         const token = issueToken(user._id);
-        res.json({ success: true, user_id: user._id, username: user.username, token });
+        res.json({ success: true, user_id: user._id, username: user.username, token, credits: CREDIT_CONFIG.INITIAL });
     } catch (e) {
         console.error('注册失败:', e);
         res.status(500).json({ error: '服务器错误' });
@@ -361,7 +442,7 @@ app.post('/api/login', authRateLimit, async (req, res) => {
         }
 
         const token = issueToken(user._id);
-        res.json({ success: true, user_id: user._id, username: user.username, token });
+        res.json({ success: true, user_id: user._id, username: user.username, token, credits: user.credits || 0, is_member: user.is_member || false });
     } catch (e) {
         console.error('登录失败:', e);
         res.status(500).json({ error: '服务器错误' });
@@ -448,13 +529,15 @@ app.post('/api/phone_login', authRateLimit, async (req, res) => {
                 username: '用户' + phone.slice(-4),
                 phone,
                 password: '',
+                credits: CREDIT_CONFIG.INITIAL,
+                claimed_achievements: [],
             });
         } else {
             user = users[0];
         }
 
         const token = issueToken(user._id);
-        res.json({ success: true, user_id: user._id, username: user.username, token });
+        res.json({ success: true, user_id: user._id, username: user.username, token, credits: user.credits || 0, is_member: user.is_member || false });
     } catch (e) {
         console.error('手机登录失败:', e);
         res.status(500).json({ error: '服务器错误' });
@@ -624,7 +707,13 @@ app.post('/api/checkins', authMiddleware, async (req, res) => {
             // await app.tcbApp.uploadFile({ cloudPath: `checkins/${checkin._id}.jpg`, fileContent: buffer });
         }
 
-        res.json({ success: true, checkin_id: checkin._id, checkin });
+        // 打卡奖励积分
+        let newCredits = null;
+        try {
+            newCredits = await addCredits(req.userId, CREDIT_CONFIG.CHECKIN_REWARD, '打卡奖励');
+        } catch (e) { console.warn('打卡积分发放失败:', e.message); }
+
+        res.json({ success: true, checkin_id: checkin._id, checkin, credits_earned: CREDIT_CONFIG.CHECKIN_REWARD, credits_balance: newCredits });
     } catch (e) {
         console.error('提交打卡失败:', e);
         res.status(500).json({ error: '服务器错误' });
@@ -743,10 +832,10 @@ function callDeepSeek(messages, maxTokens) {
 }
 
 /**
- * 生成 AI 问答回复：有 DEEPSEEK_API_KEY 时调用真实 DeepSeek，否则用本地模板兜底
+ * 生成 AI 问答回复：allowDeepSeek=true 且配置了 DEEPSEEK_API_KEY 时调用真实 AI，否则用本地模板兜底
  */
-async function generateAIReplyAsync(question) {
-    if (!aiEnabled()) return generateAIReply(question);
+async function generateAIReplyAsync(question, allowDeepSeek) {
+    if (!allowDeepSeek || !aiEnabled()) return generateAIReply(question);
     try {
         const reply = await callDeepSeek([
             { role: 'system', content: '你是"游指南"旅行应用的智能助手，用简洁、实用、友好的中文回答用户的旅行问题，包括目的地推荐、行程攻略、美食、预算、最佳旅行时间等。回答控制在300字以内，可使用要点列表。' },
@@ -765,6 +854,24 @@ app.post('/api/ai/ask', optionalAuth, async (req, res) => {
         const { question } = req.body;
         if (!question) return res.status(400).json({ error: '请输入问题' });
 
+        // 积分校验：已登录用户需有积分（或会员）才能使用 DeepSeek AI
+        let allowDeepSeek = false;
+        if (req.userId) {
+            if (await isMember(req.userId)) {
+                allowDeepSeek = true;
+            } else {
+                const ok = await deductCredits(req.userId, CREDIT_CONFIG.AI_ASK_COST, 'AI问答');
+                if (!ok) {
+                    return res.status(402).json({
+                        error: '积分不足', credits: await getUserCredits(req.userId),
+                        cost: CREDIT_CONFIG.AI_ASK_COST, need_login: false,
+                    });
+                }
+                allowDeepSeek = true;
+            }
+        }
+        // 未登录用户使用模板回复（不消耗积分）
+
         // 保存到历史
         if (req.userId) {
             await dbInsert('ai_history', { user_id: req.userId, question, answer: '' });
@@ -775,8 +882,8 @@ app.post('/api/ai/ask', optionalAuth, async (req, res) => {
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
 
-        // 生成回复（配置 DEEPSEEK_API_KEY 时为真实 AI，否则模板兜底）
-        const reply = await generateAIReplyAsync(question);
+        // 生成回复
+        const reply = await generateAIReplyAsync(question, allowDeepSeek);
         const words = reply.split('');
 
         for (let i = 0; i < words.length; i++) {
@@ -809,8 +916,25 @@ app.post('/api/ai/plan', optionalAuth, async (req, res) => {
         const { prompt, context } = req.body;
         if (!prompt) return res.status(400).json({ error: '缺少 prompt' });
 
+        // 积分校验：已登录用户需有积分（或会员）才能使用 DeepSeek 规划
+        let allowDeepSeek = false;
+        if (req.userId) {
+            if (await isMember(req.userId)) {
+                allowDeepSeek = true;
+            } else {
+                const ok = await deductCredits(req.userId, CREDIT_CONFIG.AI_PLAN_COST, 'AI路线规划');
+                if (!ok) {
+                    return res.status(402).json({
+                        error: '积分不足', credits: await getUserCredits(req.userId),
+                        cost: CREDIT_CONFIG.AI_PLAN_COST,
+                    });
+                }
+                allowDeepSeek = true;
+            }
+        }
+
         let reply = '';
-        if (aiEnabled()) {
+        if (allowDeepSeek && aiEnabled()) {
             try {
                 const ctx = context || {};
                 const spotsInfo = (ctx.spots || []).map(s => `${s.name}(${s.city || ''},${s.category || '景点'},¥${s.price || 0})`).join('、');
@@ -842,6 +966,48 @@ app.get('/api/ai/history', authMiddleware, async (req, res) => {
         res.json(history);
     } catch (e) {
         console.error('获取 AI 历史失败:', e);
+        res.status(500).json({ error: '服务器错误' });
+    }
+});
+
+// ============================================================
+// 积分系统 API
+// ============================================================
+
+// --- 查询积分余额 ---
+app.get('/api/credits/balance', authMiddleware, async (req, res) => {
+    try {
+        const credits = await getUserCredits(req.userId);
+        const member = await isMember(req.userId);
+        res.json({ credits, is_member: member });
+    } catch (e) {
+        console.error('查询积分失败:', e);
+        res.status(500).json({ error: '服务器错误' });
+    }
+});
+
+// --- 积分流水 ---
+app.get('/api/credits/history', authMiddleware, async (req, res) => {
+    try {
+        let transactions = await dbGet('credit_transactions', { user_id: req.userId });
+        transactions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        res.json(transactions.slice(0, 50)); // 最近 50 条
+    } catch (e) {
+        console.error('查询积分流水失败:', e);
+        res.status(500).json({ error: '服务器错误' });
+    }
+});
+
+// --- 领取成就奖励 ---
+app.post('/api/credits/claim-achievement', authMiddleware, async (req, res) => {
+    try {
+        const { achievement_id } = req.body;
+        if (!achievement_id) return res.status(400).json({ error: '缺少成就 ID' });
+        const result = await claimAchievementReward(req.userId, achievement_id);
+        if (!result.success) return res.status(400).json(result);
+        res.json(result);
+    } catch (e) {
+        console.error('领取成就奖励失败:', e);
         res.status(500).json({ error: '服务器错误' });
     }
 });
@@ -896,6 +1062,7 @@ async function start() {
         console.log(`  短信服务: ${sms.isReady() ? '腾讯云SMS(已配置)' : '开发模式(未配置)'}`);
         console.log(`  AI 服务: ${aiEnabled() ? 'DeepSeek(已配置)' : '模板回复(未配置 DEEPSEEK_API_KEY)'}`);
         console.log(`  安全: 密码scrypt加密 / 令牌鉴权 / 限流开启 / CORS白名单`);
+        console.log(`  积分: AI问答${CREDIT_CONFIG.AI_ASK_COST}分 / 规划${CREDIT_CONFIG.AI_PLAN_COST}分 / 打卡+${CREDIT_CONFIG.CHECKIN_REWARD}分 / 新用户${CREDIT_CONFIG.INITIAL}分`);
         console.log(`  健康检查: http://localhost:${PORT}/api/health`);
         console.log(`=============================================`);
     });
