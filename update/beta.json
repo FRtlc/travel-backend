@@ -1,11 +1,11 @@
 {
-  "version": "1.5.7",
-  "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.5.7-beta/YouZhiNan-Setup-1.5.7.exe",
-  "apkUrl": "https://github.com/FRtlc/travel-backend/releases/download/v1.5.7-beta/YouZhiNan-1.5.7-android.apk",
-  "mirrorUrl": "https://gh-proxy.com/https://github.com/FRtlc/travel-backend/releases/download/v1.5.7-beta/YouZhiNan-Setup-1.5.7.exe",
+  "version": "1.5.8",
+  "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.5.8-beta/YouZhiNan-Setup-1.5.8.exe",
+  "apkUrl": "https://github.com/FRtlc/travel-backend/releases/download/v1.5.8-beta/YouZhiNan-1.5.8-android.apk",
+  "mirrorUrl": "https://gh-proxy.com/https://github.com/FRtlc/travel-backend/releases/download/v1.5.8-beta/YouZhiNan-Setup-1.5.8.exe",
   "primaryUrl": "",
   "primaryApkUrl": "",
-  "changelog": "v1.5.7 Beta: 积分制AI系统 — 新用户50积分/AI问答5分/AI规划10分/打卡+10分/成就奖励20-100分/会员免扣/积分流水/积分不足引导",
+  "changelog": "v1.5.8 Beta: 修复移动端图标字体缺失(FontAwesome+Inter+Noto字体打包到assets)/sync-www.js增加assets递归复制",
   "channel": "beta",
   "prerelease": true
 }
