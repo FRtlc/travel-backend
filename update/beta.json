@@ -1,9 +1,9 @@
 {
-  "version": "1.5.5",
-  "url": "https://gh-proxy.com/https://github.com/FRtlc/travel-backend/releases/download/v1.5.5-beta/YouZhiNan-Setup-1.5.5.exe",
-  "apkUrl": "https://gh-proxy.com/https://github.com/FRtlc/travel-backend/releases/download/v1.5.5-beta/YouZhiNan-1.5.5-android.apk",
-  "mirrorUrl": "https://ghproxy.net/https://github.com/FRtlc/travel-backend/releases/download/v1.5.5-beta/YouZhiNan-Setup-1.5.5.exe",
-  "changelog": "v1.5.5 beta: 移除前端明文AI密钥+AI请求统一走后端+附近页酒店美食数据固定+隐私政策/法律声明/联系我们上线+拼音排序缓存+导出版本号修复+更新弹窗每天一次+图片兜底增强",
+  "version": "1.5.6",
+  "url": "https://gh-proxy.com/https://github.com/FRtlc/travel-backend/releases/download/v1.5.6-beta/YouZhiNan-Setup-1.5.6.exe",
+  "apkUrl": "https://gh-proxy.com/https://github.com/FRtlc/travel-backend/releases/download/v1.5.6-beta/YouZhiNan-1.5.6-android.apk",
+  "mirrorUrl": "https://ghproxy.net/https://github.com/FRtlc/travel-backend/releases/download/v1.5.6-beta/YouZhiNan-Setup-1.5.6.exe",
+  "changelog": "v1.5.6 安全加固版: GitHub token移出代码+旧版安装包泄露密钥清理+密码scrypt加盐哈希+服务端令牌鉴权+APK正式签名+CORS白名单+HTTPS强制+三级限流+打卡照片授权与删除+短信验证码泄露修复",
   "channel": "beta",
   "prerelease": true
 }
