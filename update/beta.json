@@ -1,9 +1,11 @@
 {
-  "version": "1.5.6",
-  "url": "https://gh-proxy.com/https://github.com/FRtlc/travel-backend/releases/download/v1.5.6-beta/YouZhiNan-Setup-1.5.6.exe",
-  "apkUrl": "https://gh-proxy.com/https://github.com/FRtlc/travel-backend/releases/download/v1.5.6-beta/YouZhiNan-1.5.6-android.apk",
-  "mirrorUrl": "https://ghproxy.net/https://github.com/FRtlc/travel-backend/releases/download/v1.5.6-beta/YouZhiNan-Setup-1.5.6.exe",
-  "changelog": "v1.5.6 安全加固版: GitHub token移出代码+旧版安装包泄露密钥清理+密码scrypt加盐哈希+服务端令牌鉴权+APK正式签名+CORS白名单+HTTPS强制+三级限流+打卡照片授权与删除+短信验证码泄露修复",
+  "version": "1.5.7",
+  "url": "https://github.com/FRtlc/travel-backend/releases/download/v1.5.7-beta/YouZhiNan-Setup-1.5.7.exe",
+  "apkUrl": "https://github.com/FRtlc/travel-backend/releases/download/v1.5.7-beta/YouZhiNan-1.5.7-android.apk",
+  "mirrorUrl": "https://gh-proxy.com/https://github.com/FRtlc/travel-backend/releases/download/v1.5.7-beta/YouZhiNan-Setup-1.5.7.exe",
+  "primaryUrl": "",
+  "primaryApkUrl": "",
+  "changelog": "v1.5.7 Beta: 积分制AI系统 — 新用户50积分/AI问答5分/AI规划10分/打卡+10分/成就奖励20-100分/会员免扣/积分流水/积分不足引导",
   "channel": "beta",
   "prerelease": true
 }
