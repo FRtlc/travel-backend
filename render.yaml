@@ -1,0 +1,34 @@
+# Render 部署配置 — 游指南后端 API
+# 文档: https://render.com/docs/blueprint-spec
+# 用法: 在 Render 仪表盘选 "New → Blueprint"，连接 GitHub 仓库 FRtlc/travel-backend，自动读取此文件
+
+services:
+  - type: web
+    name: youzhinan-backend
+    runtime: docker
+    region: singapore          # 新加坡节点，国内访问较快
+    plan: free                  # 免费层（15分钟无活动自动休眠，收到请求自动唤醒）
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true            # push 到 main 自动部署
+    envVars:
+      # ===== 必填 =====
+      - key: NODE_ENV
+        value: production
+      - key: DEEPSEEK_API_KEY
+        sync: false             # 在 Render 仪表盘填入，不入仓库
+      # ===== 前端来源（网页版部署后填 GitHub Pages / Vercel 域名）=====
+      - key: WEB_ORIGIN
+        sync: false             # 部署前端后填，如 https://frtlc.github.io
+      # ===== 可选（短信验证码功能，不填则走开发模式）=====
+      - key: TENCENT_SMS_APPID
+        sync: false
+      - key: TENCENT_SMS_APPKey
+        sync: false
+      - key: TENCENT_SMS_TEMPLATE_ID
+        sync: false
+      - key: TENCENT_SMS_SIGN_NAME
+        sync: false
+      # ===== 可选（CloudBase 数据库，不填则用内存数据库）=====
+      - key: TCB_ENV_ID
+        sync: false
